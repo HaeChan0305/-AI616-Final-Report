@@ -1,12 +1,10 @@
 \documentclass[10pt,a4paper]{article}
 \usepackage{project,graphicx,graphics}
 
-% Define math fonts
-% Usage: \mathbsf{X}, \mathssf{X}, \mathbbb{X}, \mathbf{X}, \boldsymbol{X}, \mathcal{X}, ...
-\DeclareMathAlphabet{\mathbsf}{OT1}{cmss}{bx}{n}% bold sans serif
-\DeclareMathAlphabet{\mathssf}{OT1}{cmss}{m}{sl}% slanted sans serif
-\DeclareMathAlphabet{\mathbbb}{U}{bbold}{m}{n}  % bb bold numbers
-\usepackage[mathcal]{euscript} % mathcal, used for sets
+\DeclareMathAlphabet{\mathbsf}{OT1}{cmss}{bx}{n}
+\DeclareMathAlphabet{\mathssf}{OT1}{cmss}{m}{sl}
+\DeclareMathAlphabet{\mathbbb}{U}{bbold}{m}{n}
+\usepackage[mathcal]{euscript}
 \input{math_commands}
 
 \usepackage{natbib}
@@ -24,68 +22,214 @@
 	urlcolor   = darkblue,
 }
 
-\course{KAIST AI.61600 DLT} 	
+\course{KAIST AI.61600 DLT}
 \semester{Spring 2026}
-
-
-% Insert report type here: Project Proposal, Progress Report, or Final Report
-\reporttype{Project Proposal}
-% Insert project title here. This will appear at the top of the first page.
-\projecttitle{How to explain everything in deep learning\\in a single-page proposal}
-% Insert short title here. This will appear at the top of all pages other than the first one.
-\shorttitle{How to explain everything in deep learning}
-% Insert your name(s) here.
-\studentname{Student name(s): }
+\reporttype{Final Report}
+\projecttitle{Adapter Optimization Between Frozen Modules: \\ A Controlled NTK Study}
+\shorttitle{Adapter Optimization Between Frozen Modules}
+\studentname{Student name(s): Haechan Kim}
 
 \begin{document}
 
 \maketitle
 
+\begin{abstract}
+Modern speech-language systems often connect a frozen speech encoder to a frozen language model through
+a small trainable adapter.  Empirically, the performance of such systems depends strongly on the
+particular encoder, adapter, and downstream model, but directly studying this interaction with full audio
+and LLM training is too expensive for a controlled theory project.  This report isolates one component:
+the optimization of an adapter trained between two frozen modules.  The full system is replaced by a
+teacher-student surrogate in which the encoder is a Gaussian representation distribution and the
+downstream model is a fixed head.  The main claim is that adapter width alone does not determine
+optimization difficulty; the conditioning of the frozen representation and the frozen head enters through
+the empirical neural tangent kernel (NTK).  In the surrogate, the NTK decomposes into terms involving the
+representation Gram matrix and the frozen-head Gram matrix.  Experiments confirm a strong width effect
+and show that poor encoder or head conditioning decreases the relevant NTK eigenvalues and leaves a
+larger training error, especially in the moderate-to-wide adapter regime.
+\end{abstract}
+
 \section{Introduction}
-Please use this \LaTeX~template to generate your project reports.
-Use macros in \texttt{math\_commands.tex} to write equations, e.g., $\vw^* = (\mX^T \mX)^{\dagger} \mX^T \vy$, or
-\begin{equation*}
-	\vw^* = (\mX^T \mX)^{\dagger} \mX^T \vy.
-\end{equation*}
-You can use \texttt{lemma}, \texttt{theorem}, \texttt{corollary}, and \texttt{proposition} enviornments to state theorems. Use \texttt{proof} environment to write proofs. Feel free to define your own environments and macros if necessary.
+Pretrained speech-language models can be viewed as a composition
+\[
+    x \xrightarrow[]{E} z\in\mathbb{R}^{d_E}
+    \xrightarrow[]{A_\theta} u\in\mathbb{R}^{d_L}
+    \xrightarrow[]{\phi} y\in\mathbb{R}^{d_Y},
+\]
+where $E$ is a frozen audio encoder, $\phi$ is a frozen downstream model, and only the adapter
+$A_\theta$ is trained.  This setting is motivated by empirical evidence that encoder rankings and
+adapter choices do not transfer cleanly across audio-language systems
+\citep{superb,xares,moead}.  This report focuses on the optimization aspect of this phenomenon:
+\emph{when is adapter-only training easy or difficult, given fixed surrounding modules?}
 
-Use \texttt{citet} and \texttt{citep} commands to cite references. Use \texttt{citet} when the reference constitutes a part of the sentence, e.g., \citet{goodfellow2016deep} provide a good introduction to deep learning. Use \texttt{citep} when the reference is not part of the sentence and can be parenthesized, e.g., it is widely believed that deep networks find more fine-grained representations as the networks get deeper~\citep{goodfellow2016deep}.
-The list of references does \emph{not} count toward the page limits.
+The main simplification is to replace real audio and LLMs by a tractable surrogate that preserves the
+chain-rule structure of the end-to-end Jacobian.  This follows a standard deep-learning-theory workflow:
+choose a phenomenon, strip it down to a model whose quantities are observable, and analyze that model.
+The resulting question is narrow but testable: how do the covariance of frozen representations and the
+Jacobian of the frozen head affect the empirical NTK and gradient-descent behavior of the adapter?
 
-\begin{theorem}
-\label{thm:1}
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-\end{theorem}
-\begin{proof}
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-\end{proof}
+\section{Problem Setup}
+The experimental dataset is $\mathcal{D}=\{(z_i,y_i)\}_{i=1}^n$, where $z_i$ is the frozen encoder
+representation and $y_i$ is a vector-valued label.  The encoder is modeled by
+\[
+    z_i\sim \mathcal{N}(0,\Sigma_E).
+\]
+Labels are generated by a teacher adapter $A_\star\in\mathbb{R}^{d_L\times d_E}$ and a fixed downstream
+head $\phi:\mathbb{R}^{d_L}\to\mathbb{R}^{d_Y}$:
+\[
+    y_i=\phi(A_\star z_i)+\xi_i,\qquad \xi_i\sim\mathcal{N}(0,\sigma^2 I_{d_Y}).
+\]
+The student adapter is a two-layer ReLU network
+\[
+    A_\theta(z)=\frac{1}{\sqrt m}W_2\sigma(W_1z),\qquad
+    W_1\in\mathbb{R}^{m\times d_E},\quad W_2\in\mathbb{R}^{d_L\times m},
+\]
+where $m$ is the adapter width and $\theta=(W_1,W_2)$ are the only trainable parameters.  The predictor
+is $f_\theta(z)=\phi(A_\theta(z))$, trained by full-batch gradient descent on
+\[
+    \widehat L(\theta)=\frac1n\sum_{i=1}^n \|f_\theta(z_i)-y_i\|_2^2 .
+\]
 
-\begin{lemma}
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-\end{lemma}
+Let $J_0=\nabla_\theta f_{\theta_0}(\mathcal{D})$ be the Jacobian of the vectorized model outputs at
+initialization and $K_0=J_0J_0^\top$ the empirical NTK.  The empirical representation covariance is
+$\widehat\Sigma_z=n^{-1}\sum_i z_iz_i^\top$.  The frozen-head sensitivity is summarized by
+\[
+    H_\phi=\frac1n\sum_{i=1}^n D\phi(u_i)D\phi(u_i)^\top,
+    \qquad u_i=A_{\theta_0}(z_i),
+\]
+which becomes $H_\phi=CC^\top$ for a linear head $\phi(u)=Cu$.  For a positive definite matrix $M$,
+$\kappa(M)=\lambda_{\max}(M)/\lambda_{\min}(M)$ denotes its condition number.
 
-\section{Not an intro}
-\subsection{Not a conclusion}
-\begin{corollary}[of Theorem~\ref{thm:1}]
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-\end{corollary}
+\section{NTK Analysis}
+The optimization hypothesis is that adapter training is governed by the small eigenvalues of $K_0$.
+The following standard NTK-style statement makes the role of this eigenvalue explicit
+\citep{jacot2018,du2019}.
 
-\begin{proposition}
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+\begin{proposition}[Linearized NTK convergence]
+Consider the linearized dynamics around initialization, where the residual vector evolves as
+$r_{t+1}=(I-\eta K_0)r_t$.  If $\lambda_0=\lambda_{\min}(K_0)>0$ and
+$\eta\le 1/\lambda_{\max}(K_0)$, then
+\[
+    \|r_{t+1}\|_2^2 \le (1-\eta\lambda_0)^2\|r_t\|_2^2 .
+\]
 \end{proposition}
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+\begin{proof}
+Since $K_0$ is symmetric positive semidefinite, the eigenvalues of $I-\eta K_0$ lie in
+$[0,1-\eta\lambda_0]$ under the stated step-size condition.  Therefore
+\[
+    \|r_{t+1}\|_2=\|(I-\eta K_0)r_t\|_2
+    \le (1-\eta\lambda_0)\|r_t\|_2,
+\]
+and squaring both sides gives the claim.
+\end{proof}
+
+Standard wide-network NTK analyses justify using this linearized dynamics when the empirical kernel
+does not move much during training \citep{jacot2018,du2019}.  Thus the small eigenvalues of $K_0$ are a
+natural diagnostic for adapter optimization.
+
+For the linear-head surrogate, the NTK can be written explicitly.  Let $c_a^\top$ be row $a$ of $C$,
+$w_{2,r}$ be column $r$ of $W_2$, $h_i=\sigma(W_1z_i)$, and
+$s_{ir}=\mathbf{1}\{(W_1z_i)_r>0\}$.  For samples $i,j$ and output coordinates $a,b$,
+\[
+\begin{aligned}
+K_{0,(i,a),(j,b)}
+&= \frac1m \langle h_i,h_j\rangle (CC^\top)_{ab}  \\
+&\quad + \frac1m \sum_{r=1}^m s_{ir}s_{jr}\,
+        \langle z_i,z_j\rangle\,
+        (c_a^\top w_{2,r})(c_b^\top w_{2,r}).
+\end{aligned}
+\]
+This identity shows why both frozen modules matter.  The representation Gram matrix enters through
+$\langle z_i,z_j\rangle$, while the downstream head enters through $CC^\top$ and the projected adapter
+columns $Cw_{2,r}$.  Thus poor conditioning of either the representation distribution or the frozen head
+can shrink the useful spectrum of $K_0$ and require a larger width $m$ to obtain comparable convergence.
+
+\section{Experiments}
+All experiments use generated representation-label data rather than raw audio.  The default setting is
+$d_E=64$, $d_L=32$, $d_Y=8$, $n_{\rm train}=512$, $n_{\rm val}=512$, $n_{\rm test}=4096$, and noise
+level $\sigma=0.05$.  Each configuration is averaged over five seeds.  The reported optimization metric
+is final training MSE after 800 full-batch gradient steps with the learning rate capped at $1.0$.
+
+\textbf{E1: encoder conditioning.}  The head is fixed with $\kappa(H_\phi)=1$, while
+$\Sigma_E$ is diagonal with log-spaced eigenvalues and
+$\kappa_E\in\{1,3,10,30,100\}$.  The adapter width is
+$m\in\{16,32,64,128,256,512\}$.
+
+\textbf{E2: frozen-head conditioning.}  The encoder distribution is isotropic, $\Sigma_E=I$, while the
+linear head $C$ is generated so that $\kappa(CC^\top)\in\{1,3,10,30,100\}$.  The same width grid is used.
+
+\textbf{E3: NTK predictiveness.}  E1 and E2 are pooled to test whether $\lambda_{\min}(K_0)$ predicts
+optimization error beyond width.  The analysis computes correlations between $\log\lambda_{\min}(K_0)$ and
+$\log$ final training MSE and fits simple log-linear least-squares predictors.
+
+\section{Results}
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llccc}
+\hline
+Experiment & Setting & $m=16$ & $m=128$ & $m=512$ \\
+\hline
+E1 train MSE & $\kappa_E=1$   & $2.28{\times}10^{-2}$ & $1.59{\times}10^{-3}$ & $1.36{\times}10^{-4}$ \\
+E1 train MSE & $\kappa_E=100$ & $1.52{\times}10^{-2}$ & $3.03{\times}10^{-3}$ & $5.93{\times}10^{-4}$ \\
+E2 train MSE & $\kappa_H=1$   & $2.40{\times}10^{-2}$ & $1.56{\times}10^{-3}$ & $1.17{\times}10^{-4}$ \\
+E2 train MSE & $\kappa_H=100$ & $1.96{\times}10^{-2}$ & $3.27{\times}10^{-3}$ & $1.78{\times}10^{-3}$ \\
+\hline
+\end{tabular}
+\caption{Representative final training MSE values.  Width improves optimization in both sweeps, but
+ill-conditioned frozen modules leave larger residual error at the same width.}
+\label{tab:main}
+\end{table}
+
+Table~\ref{tab:main} and Figure~\ref{fig:heatmaps} show the two main sweeps.  Width is the dominant
+factor: increasing $m$ from $16$ to $512$ reduces final training MSE by one to two orders of magnitude.
+Conditioning matters once the adapter is moderately wide.  In E1, at $m=512$, the final MSE increases
+from $1.36\times10^{-4}$ at $\kappa_E=1$ to $5.93\times10^{-4}$ at $\kappa_E=100$; the corresponding
+mean $\lambda_{\min}(K_0)$ decreases from $9.39$ to $6.85$.  In E2 the effect is stronger: at $m=512$,
+the final MSE increases from $1.17\times10^{-4}$ at $\kappa_H=1$ to $1.78\times10^{-3}$ at
+$\kappa_H=100$, while $\lambda_{\min}(K_0)$ decreases from $9.62$ to $0.46$.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/conditioning_heatmaps.png}
+\caption{Final train MSE over width and conditioning.  Darker values correspond to smaller MSE.  Both
+encoder-side and head-side ill-conditioning make optimization harder at fixed width.}
+\label{fig:heatmaps}
+\end{figure}
+
+The NTK diagnostic is also predictive, but not the only explanatory variable.  Across all 300 E1/E2
+runs, the Pearson correlation between $\log\lambda_{\min}(K_0)$ and $\log$ final train MSE is
+$-0.759$.  Width alone already explains much of the variance in this controlled experiment
+($R^2=0.876$ for a log-linear width-only predictor), while adding conditioning information increases the
+fit to $R^2=0.916$.  The NTK signal becomes strongest in the overparameterized regime: within the fixed
+width slice $m=512$, the combined E1/E2 correlation between $\log\lambda_{\min}(K_0)$ and
+$\log$ final train MSE is $-0.896$ (and $-0.969$ in E2 alone).  This is consistent with the theoretical
+picture: after width is large enough to remove severe underparameterization, the frozen-module spectrum
+becomes a meaningful predictor of residual optimization error.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.55\textwidth]{figures/lambda_vs_error.png}
+\caption{Relationship between the empirical NTK minimum eigenvalue and final training error for E1 and
+E2.  Marker size increases with adapter width.}
+\label{fig:lambda}
+\end{figure}
+
+\section{Conclusion and Limitations}
+This project gives a controlled account of adapter optimization between frozen modules.  The main result
+is qualitative but robust: adapter width is necessary, but the conditioning of the frozen representation
+and frozen head affects the empirical NTK spectrum and the remaining optimization error.  This explains,
+in a tractable model, why different frozen encoder--LLM pairs may require different adapter widths even
+when the adapter architecture is unchanged.
+
+The limitations are also clear.  The experiments use Gaussian representations and fixed linear heads,
+not real audio encoders or LLMs.  The binary success threshold $10^{-4}$ was too strict under the
+conservative learning-rate budget, so the final analysis relies on continuous training-error metrics.
+Future work should test the same NTK diagnostics on cached representations from real speech encoders and
+on nonlinear frozen heads with more realistic local Jacobian spectra.
 
 \bibliographystyle{abbrvnat}
 \bibliography{ref}
 
-\newpage
-\appendix
-
-\section{Additional details}
-If you need more pages than the page limits (e.g., proof and experiment details), you can defer things to appendices. However, appendices may not necessarily count towards your scores when it comes to grading. Thus, please make sure that your main report contains all the important things that need to be graded.
-
 \end{document}
-
-
-
