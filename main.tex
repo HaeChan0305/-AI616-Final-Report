@@ -1,0 +1,91 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage{project,graphicx,graphics}
+
+% Define math fonts
+% Usage: \mathbsf{X}, \mathssf{X}, \mathbbb{X}, \mathbf{X}, \boldsymbol{X}, \mathcal{X}, ...
+\DeclareMathAlphabet{\mathbsf}{OT1}{cmss}{bx}{n}% bold sans serif
+\DeclareMathAlphabet{\mathssf}{OT1}{cmss}{m}{sl}% slanted sans serif
+\DeclareMathAlphabet{\mathbbb}{U}{bbold}{m}{n}  % bb bold numbers
+\usepackage[mathcal]{euscript} % mathcal, used for sets
+\input{math_commands}
+
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{color,colortbl}
+\definecolor{darkblue}{rgb}{0.0,0.0,0.65}
+\definecolor{darkred}{rgb}{0.65,0.0,0.0}
+\definecolor{darkgreen}{rgb}{0.0,0.65,0.0}
+\hypersetup{
+	colorlinks = true,
+	citecolor  = darkblue,
+	linkcolor  = darkred,
+	filecolor  = darkblue,
+	urlcolor   = darkblue,
+}
+
+\course{KAIST AI.61600 DLT} 	
+\semester{Spring 2026}
+
+
+% Insert report type here: Project Proposal, Progress Report, or Final Report
+\reporttype{Project Proposal}
+% Insert project title here. This will appear at the top of the first page.
+\projecttitle{How to explain everything in deep learning\\in a single-page proposal}
+% Insert short title here. This will appear at the top of all pages other than the first one.
+\shorttitle{How to explain everything in deep learning}
+% Insert your name(s) here.
+\studentname{Student name(s): }
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+Please use this \LaTeX~template to generate your project reports.
+Use macros in \texttt{math\_commands.tex} to write equations, e.g., $\vw^* = (\mX^T \mX)^{\dagger} \mX^T \vy$, or
+\begin{equation*}
+	\vw^* = (\mX^T \mX)^{\dagger} \mX^T \vy.
+\end{equation*}
+You can use \texttt{lemma}, \texttt{theorem}, \texttt{corollary}, and \texttt{proposition} enviornments to state theorems. Use \texttt{proof} environment to write proofs. Feel free to define your own environments and macros if necessary.
+
+Use \texttt{citet} and \texttt{citep} commands to cite references. Use \texttt{citet} when the reference constitutes a part of the sentence, e.g., \citet{goodfellow2016deep} provide a good introduction to deep learning. Use \texttt{citep} when the reference is not part of the sentence and can be parenthesized, e.g., it is widely believed that deep networks find more fine-grained representations as the networks get deeper~\citep{goodfellow2016deep}.
+The list of references does \emph{not} count toward the page limits.
+
+\begin{theorem}
+\label{thm:1}
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+\end{theorem}
+\begin{proof}
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+\end{proof}
+
+\begin{lemma}
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+\end{lemma}
+
+\section{Not an intro}
+\subsection{Not a conclusion}
+\begin{corollary}[of Theorem~\ref{thm:1}]
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+\end{corollary}
+
+\begin{proposition}
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+\end{proposition}
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+\bibliographystyle{abbrvnat}
+\bibliography{ref}
+
+\newpage
+\appendix
+
+\section{Additional details}
+If you need more pages than the page limits (e.g., proof and experiment details), you can defer things to appendices. However, appendices may not necessarily count towards your scores when it comes to grading. Thus, please make sure that your main report contains all the important things that need to be graded.
+
+\end{document}
+
+
+
