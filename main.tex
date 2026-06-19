@@ -46,6 +46,8 @@ the empirical neural tangent kernel (NTK).  In the surrogate, the NTK decomposes
 representation Gram matrix and the frozen-head Gram matrix.  Experiments confirm a strong width effect
 and show that poor encoder or head conditioning decreases the relevant NTK eigenvalues and leaves a
 larger training error, especially in the moderate-to-wide adapter regime.
+An additional kernel-drift experiment shows that the empirical NTK becomes more stable as width
+increases, supporting the use of the initialization NTK as a diagnostic in the overparameterized regime.
 \end{abstract}
 
 \section{Introduction}
@@ -145,7 +147,8 @@ columns $Cw_{2,r}$.  Thus poor conditioning of either the representation distrib
 can shrink the useful spectrum of $K_0$ and require a larger width $m$ to obtain comparable convergence.
 
 \section{Experiments}
-All experiments use generated representation-label data rather than raw audio.  The default setting is
+All experiments use generated representation-label data rather than raw audio.  Unless stated otherwise,
+the default setting is
 $d_E=64$, $d_L=32$, $d_Y=8$, $n_{\rm train}=512$, $n_{\rm val}=512$, $n_{\rm test}=4096$, and noise
 level $\sigma=0.05$.  Each configuration is averaged over five seeds.  The reported optimization metric
 is final training MSE after 800 full-batch gradient steps with the learning rate capped at $1.0$.
@@ -161,6 +164,17 @@ linear head $C$ is generated so that $\kappa(CC^\top)\in\{1,3,10,30,100\}$.  The
 \textbf{E3: NTK predictiveness.}  E1 and E2 are pooled to test whether $\lambda_{\min}(K_0)$ predicts
 optimization error beyond width.  The analysis computes correlations between $\log\lambda_{\min}(K_0)$ and
 $\log$ final training MSE and fits simple log-linear least-squares predictors.
+
+\textbf{E4: kernel drift.}  The NTK analysis uses the initialization kernel $K_0$, so E4 measures how far
+the empirical kernel moves during nonlinear training.  For the well-conditioned setting
+$(\kappa_E,\kappa_H)=(1,1)$, the ill-conditioned-encoder setting $(100,1)$, and the
+ill-conditioned-head setting $(1,100)$, the experiment computes
+\[
+    \frac{\|K_T-K_0\|_F}{\|K_0\|_F},
+\]
+where $K_T$ is the empirical NTK at the final iterate.  Because this requires two exact NTK computations
+per run, E4 uses $n_{\rm train}=256$, $n_{\rm test}=2048$, $n_{\rm NTK}=32$, widths
+$m\in\{64,128,256,512\}$, and three seeds.
 
 \section{Results}
 \begin{table}[t]
@@ -198,8 +212,9 @@ encoder-side and head-side ill-conditioning make optimization harder at fixed wi
 \label{fig:heatmaps}
 \end{figure}
 
-The NTK diagnostic is also predictive, but not the only explanatory variable.  Across all 300 E1/E2
-runs, the Pearson correlation between $\log\lambda_{\min}(K_0)$ and $\log$ final train MSE is
+Figure~\ref{fig:lambda} shows that the NTK diagnostic is predictive, but not the only explanatory
+variable.  Across all 300 E1/E2 runs, the Pearson correlation between $\log\lambda_{\min}(K_0)$ and
+$\log$ final train MSE is
 $-0.759$.  Width alone already explains much of the variance in this controlled experiment
 ($R^2=0.876$ for a log-linear width-only predictor), while adding conditioning information increases the
 fit to $R^2=0.916$.  The NTK signal becomes strongest in the overparameterized regime: within the fixed
@@ -216,11 +231,33 @@ E2.  Marker size increases with adapter width.}
 \label{fig:lambda}
 \end{figure}
 
+E4 checks that the preceding NTK interpretation is most appropriate at larger width.  As shown in
+Figure~\ref{fig:drift}, the relative kernel drift decreases nearly monotonically with $m$ in all three
+tested conditions.  In the well-conditioned case, drift falls from $0.400$ at $m=64$ to $0.102$ at
+$m=512$; for the ill-conditioned encoder it falls from $0.446$ to $0.122$; for the ill-conditioned head
+it falls from $0.346$ to $0.077$.  Relative parameter movement shows the same trend, decreasing from
+roughly $0.15$--$0.17$ at $m=64$ to about $0.05$ at $m=512$.  Thus the wide adapters used to interpret
+$\lambda_{\min}(K_0)$ are also the settings where the nonlinear model stays closest to its initialization
+kernel.  At the same time, the ill-conditioned-head setting still has much larger final training MSE at
+$m=512$ ($6.79\times10^{-4}$ versus $6.12\times10^{-5}$ in the well-conditioned E4 setting), indicating
+that the difficulty is not caused merely by kernel drift; it is already visible in the small useful
+spectrum of $K_0$.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.80\textwidth]{figures/kernel_drift.png}
+\caption{E4 kernel drift and parameter movement.  Wider adapters move less in both parameter space and
+empirical-NTK space, making the initialization NTK a more reliable diagnostic.}
+\label{fig:drift}
+\end{figure}
+
 \section{Conclusion and Limitations}
 This project gives a controlled account of adapter optimization between frozen modules.  The main result
 is qualitative but robust: adapter width is necessary, but the conditioning of the frozen representation
-and frozen head affects the empirical NTK spectrum and the remaining optimization error.  This explains,
-in a tractable model, why different frozen encoder--LLM pairs may require different adapter widths even
+and frozen head affects the empirical NTK spectrum and the remaining optimization error.  The kernel-drift
+experiment further shows that this spectral diagnostic is most defensible in the moderate-to-wide regime,
+where the nonlinear adapter remains closer to its initialization kernel.  Together, these results explain
+in a tractable model why different frozen encoder--LLM pairs may require different adapter widths even
 when the adapter architecture is unchanged.
 
 The limitations are also clear.  The experiments use Gaussian representations and fixed linear heads,
