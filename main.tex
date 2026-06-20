@@ -46,9 +46,9 @@ the empirical neural tangent kernel (NTK).  In the surrogate, the NTK decomposes
 representation Gram matrix and the frozen-head Gram matrix.  Experiments confirm a strong width effect
 and show that poor encoder or head conditioning decreases the relevant NTK eigenvalues and leaves a
 larger training error, especially in the moderate-to-wide adapter regime.
-Additional joint-conditioning and kernel-drift experiments show that the two frozen modules interact
-through the spectrum and that the empirical NTK becomes more stable as width increases, supporting the
-use of the initialization NTK as a diagnostic in the overparameterized regime.
+Additional joint-conditioning, width-threshold, and kernel-drift experiments show that the two frozen
+modules interact through the spectrum, that ill-conditioned pairs require substantially wider adapters,
+and that the empirical NTK becomes more stable as width increases.
 \end{abstract}
 
 \section{Introduction}
@@ -178,7 +178,13 @@ $(\kappa_E,\kappa_H)\in\{1,10,100\}\times\{1,10,100\}$ at widths $m\in\{128,512\
 This experiment checks whether the easiest and hardest regimes are organized by the joint spectrum of the
 representation and head factors rather than by either factor alone.
 
-\textbf{E5: kernel drift.}  The NTK analysis uses the initialization kernel $K_0$, so E5 measures how far
+\textbf{E5: width threshold.}  To test whether conditioning changes the amount of overparameterization
+needed, E5 fixes four frozen-module pairs:
+$(1,1)$, $(100,1)$, $(1,100)$, and $(100,100)$ for $(\kappa_E,\kappa_H)$.  The width is swept over
+$m\in\{32,64,128,256,512,1024\}$ with three seeds.  The target error budget is final train MSE
+$10^{-3}$.
+
+\textbf{E6: kernel drift.}  The NTK analysis uses the initialization kernel $K_0$, so E6 measures how far
 the empirical kernel moves during nonlinear training.  For the well-conditioned setting
 $(\kappa_E,\kappa_H)=(1,1)$, the ill-conditioned-encoder setting $(100,1)$, and the
 ill-conditioned-head setting $(1,100)$, the experiment computes
@@ -186,7 +192,7 @@ ill-conditioned-head setting $(1,100)$, the experiment computes
     \frac{\|K_T-K_0\|_F}{\|K_0\|_F},
 \]
 where $K_T$ is the empirical NTK at the final iterate.  Because this requires two exact NTK computations
-per run, E5 uses $n_{\rm train}=256$, $n_{\rm test}=2048$, $n_{\rm NTK}=32$, widths
+per run, E6 uses $n_{\rm train}=256$, $n_{\rm test}=2048$, $n_{\rm NTK}=32$, widths
 $m\in\{64,128,256,512\}$, and three seeds.
 
 \section{Results}
@@ -245,9 +251,9 @@ E2.  Marker size increases with adapter width.}
 \end{figure}
 
 The joint-conditioning sweep provides a stronger test of the hypothesis because it varies both frozen
-modules simultaneously.  Figure~\ref{fig:joint} shows that increasing either $\kappa_E$ or $\kappa_H$
-raises the final error and generally reduces $\lambda_{\min}(K_0)$, with the largest degradation when
-both are ill-conditioned.  At $m=512$, the well-conditioned setting has final train MSE
+modules simultaneously.  Increasing either $\kappa_E$ or $\kappa_H$ raises the final error and generally
+reduces $\lambda_{\min}(K_0)$, with the largest degradation when both are ill-conditioned.  At $m=512$,
+the well-conditioned setting has final train MSE
 $1.14\times10^{-4}$ and mean $\lambda_{\min}(K_0)=9.45$.  With only encoder ill-conditioning
 $(\kappa_E,\kappa_H)=(100,1)$, the MSE rises to $5.30\times10^{-4}$ and $\lambda_{\min}(K_0)$ drops to
 $6.64$.  With only head ill-conditioning $(1,100)$, the MSE rises further to $1.77\times10^{-3}$ and
@@ -256,34 +262,31 @@ $2.34\times10^{-3}$ and $\lambda_{\min}(K_0)$ is only $0.306$.  Across the E4 ru
 between $\log\lambda_{\min}(K_0)$ and $\log$ final train MSE is $-0.793$ at $m=128$ and $-0.915$ at
 $m=512$, again showing that the NTK spectrum becomes most informative in the wider regime.
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.62\textwidth]{figures/joint_conditioning.png}
-\caption{E4 joint-conditioning sweep.  The left column reports final training MSE, and the right column
-reports $\lambda_{\min}(K_0)$.  The hardest settings coincide with small useful NTK eigenvalues,
-especially at larger width.}
-\label{fig:joint}
-\end{figure}
-
-E5 checks that the preceding NTK interpretation is most appropriate at larger width.  As shown in
-Figure~\ref{fig:drift}, the relative kernel drift decreases nearly monotonically with $m$ in all three
-tested conditions.  In the well-conditioned case, drift falls from $0.400$ at $m=64$ to $0.102$ at
-$m=512$; for the ill-conditioned encoder it falls from $0.446$ to $0.122$; for the ill-conditioned head
-it falls from $0.346$ to $0.077$.  Relative parameter movement shows the same trend, decreasing from
-roughly $0.15$--$0.17$ at $m=64$ to about $0.05$ at $m=512$.  Thus the wide adapters used to interpret
-$\lambda_{\min}(K_0)$ are also the settings where the nonlinear model stays closest to its initialization
-kernel.  At the same time, the ill-conditioned-head setting still has much larger final training MSE at
-$m=512$ ($6.79\times10^{-4}$ versus $6.12\times10^{-5}$ in the well-conditioned E5 setting), indicating
-that the difficulty is not caused merely by kernel drift; it is already visible in the small useful
-spectrum of $K_0$.
+The width-threshold experiment makes this conclusion operational.  With target train MSE $10^{-3}$, the
+well-conditioned pair reaches the target at $m=256$, while the encoder-bad pair requires $m=512$.
+The head-bad pair and the both-bad pair do not reach the target even at $m=1024$; their best observed
+MSE values are $1.55\times10^{-3}$ and $1.99\times10^{-3}$, respectively.  The corresponding
+$\lambda_{\min}(K_0)$ values at $m=1024$ are $10.38$ for the well-conditioned pair, $7.45$ for the
+encoder-bad pair, $0.497$ for the head-bad pair, and $0.339$ for the both-bad pair.  Thus adding width
+helps every condition, but poor head-side or joint conditioning leaves the effective kernel spectrum too
+small to match the well-conditioned optimization behavior within the tested width budget.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.72\textwidth]{figures/kernel_drift.png}
-\caption{E5 kernel drift and parameter movement.  Wider adapters move less in both parameter space and
-empirical-NTK space, making the initialization NTK a more reliable diagnostic.}
-\label{fig:drift}
+\includegraphics[width=0.72\textwidth]{figures/width_threshold.png}
+\caption{E5 width-threshold experiment.  The dashed line marks train MSE $10^{-3}$.  The required width
+depends strongly on the frozen-module pair, and conditions with persistently small
+$\lambda_{\min}(K_0)$ require more width.}
+\label{fig:threshold}
 \end{figure}
+
+E6 checks that the preceding NTK interpretation is most appropriate at larger width.  The relative kernel
+drift decreases nearly monotonically with $m$ in all three tested conditions.  In the well-conditioned
+case, drift falls from $0.400$ at $m=64$ to $0.102$ at $m=512$; for the ill-conditioned encoder it falls
+from $0.446$ to $0.122$; for the ill-conditioned head it falls from $0.346$ to $0.077$.  Relative
+parameter movement shows the same trend, decreasing from roughly $0.15$--$0.17$ at $m=64$ to about
+$0.05$ at $m=512$.  Thus the wide adapters used to interpret $\lambda_{\min}(K_0)$ are also the settings
+where the nonlinear model stays closest to its initialization kernel.
 
 \section{Discussion}
 The experiments support a specific interpretation of adapter optimization.  At very small width, the
@@ -292,16 +295,21 @@ adapter has enough random features to fit the teacher map, and the frozen module
 of variation.  This explains why $\lambda_{\min}(K_0)$ is most predictive within the wide slices of E3
 and E4.  In that regime, the model is not failing because it lacks parameters; it is failing because the
 gradient directions induced by the frozen encoder and head do not span the output residuals equally well.
+E5 converts this spectral view into a width requirement: better frozen spectra reach the same error
+budget with a smaller adapter, while poorly conditioned heads remain difficult even after increasing
+width to $1024$.
 
 \section{Conclusion and Limitations}
 This project gives a controlled account of adapter optimization between frozen modules.  The main result
 is qualitative but robust: adapter width is necessary, but the conditioning of the frozen representation
 and frozen head affects the empirical NTK spectrum and the remaining optimization error.  The
 joint-conditioning experiment verifies that the two frozen modules are not independent nuisances; they
-combine through the same empirical kernel.  The kernel-drift experiment further shows that this spectral
-diagnostic is most defensible in the moderate-to-wide regime, where the nonlinear adapter remains closer
-to its initialization kernel.  Together, these results explain in a tractable model why different frozen
-encoder--LLM pairs may require different adapter widths even
+combine through the same empirical kernel.  The width-threshold experiment further shows that this is not
+only a post-hoc spectral correlation: the width required to hit a fixed error budget changes with the
+frozen pair.  The kernel-drift experiment shows that this diagnostic is most defensible in the
+moderate-to-wide regime, where the nonlinear adapter remains closer to its initialization kernel.
+Together, these results explain in a tractable model why different frozen encoder--LLM pairs may require
+different adapter widths even
 when the adapter architecture is unchanged.
 
 The limitations are also clear.  The experiments use Gaussian representations and fixed linear heads,
